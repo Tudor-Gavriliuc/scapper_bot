@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Runtime outputs
+data/*_today.json
+
+# SQLite runtime artifacts
+*.db-shm
+*.db-wal
+
+# Keep main DB tracked for dedup persistence in GitHub Actions
+!data/
+!data/promotions.db
