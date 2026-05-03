@@ -52,15 +52,15 @@ jobs:
         run: |
           python run_daily_posting.py
 
-      - name: Commit DB updates for dedup persistence
+      - name: Commit state updates for dedup persistence
         run: |
-          if git diff --quiet -- data/promotions.db; then
-            echo "No DB changes to commit"
+          if git diff --quiet -- data/promotions.db data/revista_post_state.json; then
+            echo "No state changes to commit"
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/promotions.db
-          git commit -m "chore: update promotions db [skip ci]"
+          git add data/promotions.db data/revista_post_state.json
+          git commit -m "chore: update posting state [skip ci]"
           git push

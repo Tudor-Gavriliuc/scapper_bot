@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from core.config import settings
+from core.revista_state import mark_posted, was_posted
 from core.telegram_bot import TelegramBot
 from extract_nr1_booklet_images import OUTPUT_PATH, extract_today_booklet_images
 
@@ -23,12 +24,17 @@ def main() -> None:
     date_label = payload.get("booklet_date") or "-"
     booklet_url = payload.get("booklet_url") or ""
 
+    if was_posted("nr1", booklet_url):
+        print(f"[INFO] Nr1 already posted, skipping duplicate: {booklet_url}")
+        return
+
     message = (
         "📰 Revista Nr1 de azi\n"
         f"📅 Data: {date_label}\n"
         f"🔗 Link: {booklet_url}"
     )
     bot.send_text(message, parse_mode="HTML", disable_web_page_preview=False)
+    mark_posted("nr1", booklet_url)
 
     print(
         "[INFO] Nr1 booklet link sent "
