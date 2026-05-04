@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 5 * * *"
   workflow_dispatch:
+    inputs:
+      force_repost:
+        description: "Reset posted flags for Kaufland and Linella before run"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -48,6 +54,21 @@ jobs:
           mkdir -p data
           touch data/promotions.db
           [ -f data/revista_post_state.json ] || echo '{}' > data/revista_post_state.json
+
+      - name: Optional reset for manual repost
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_repost == true }}
+        run: |
+          python - <<'PY'
+          import sqlite3
+
+          conn = sqlite3.connect("data/promotions.db")
+          conn.execute(
+              "UPDATE products SET posted_to_telegram = 0 WHERE source_code IN ('kaufland', 'linella')"
+          )
+          conn.commit()
+          conn.close()
+          print("Reset posted_to_telegram for kaufland and linella")
+          PY
 
       - name: Run daily posting
         run: |
