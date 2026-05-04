@@ -47,6 +47,7 @@ jobs:
         run: |
           mkdir -p data
           touch data/promotions.db
+          [ -f data/revista_post_state.json ] || echo '{}' > data/revista_post_state.json
 
       - name: Run daily posting
         run: |
