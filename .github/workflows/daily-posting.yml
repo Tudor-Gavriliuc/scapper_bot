@@ -55,6 +55,13 @@ jobs:
           touch data/promotions.db
           [ -f data/revista_post_state.json ] || echo '{}' > data/revista_post_state.json
 
+      - name: Validate Telegram secrets
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHANNEL_ID" ]; then
+            echo "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID in repository secrets"
+            exit 1
+          fi
+
       - name: Optional reset for manual repost
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_repost == true }}
         run: |
