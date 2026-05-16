@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       force_repost:
-        description: "Reset posted flags for Kaufland and Linella before run"
+        description: "Reset posted flags for all sources (Kaufland, Linella, Local, NR1, Bonus)"
         required: false
         default: false
         type: boolean
@@ -71,7 +71,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_repost == true }}
         run: |
           python - <<'PY'
-          import sqlite3
+          import sqlite3, json, pathlib
 
           conn = sqlite3.connect("data/promotions.db")
           conn.execute(
@@ -79,7 +79,14 @@ jobs:
           )
           conn.commit()
           conn.close()
-            print("Reset posted_to_telegram for kaufland, linella, local, magazine, bonus")
+          print("Reset posted_to_telegram for kaufland, linella, local, magazine, bonus")
+
+          p = pathlib.Path("data/revista_post_state.json")
+          d = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+          for key in ("nr1", "bonus", "local"):
+              d.pop(key, None)
+          p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("Reset revista_post_state for nr1, bonus, local")
           PY
 
       - name: Run daily posting
