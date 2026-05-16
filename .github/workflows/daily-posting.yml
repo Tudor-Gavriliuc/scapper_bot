@@ -74,12 +74,12 @@ jobs:
           )
           conn.commit()
           conn.close()
-            print("Reset posted_to_telegram for kaufland and linella")
+          print("Reset posted_to_telegram for kaufland and linella")
           PY
 
       - name: Run daily posting
         run: |
-            python run_daily_posting.py
+          python run_daily_posting.py
 
       - name: Commit state updates for dedup persistence
         run: |
