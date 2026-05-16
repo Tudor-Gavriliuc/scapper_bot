@@ -114,5 +114,21 @@ class Settings:
         "a[href]",
     )
 
+    # Magazine scraper settings
+    enable_magazine: bool = _as_bool(os.getenv("ENABLE_MAGAZINE", "1"))
+    magazine_url: str = os.getenv(
+        "MAGAZINE_URL",
+        "https://mylocal.md/ro/revista",
+    )
+    magazine_image_selector: str = os.getenv(
+        "MAGAZINE_IMAGE_SELECTOR",
+        "img[src*='gallery']",
+    )
+    magazine_ocr_language: str = os.getenv("MAGAZINE_OCR_LANGUAGE", "eng+ron")
+    magazine_crop_left: int = int(os.getenv("MAGAZINE_CROP_LEFT", "180"))
+    magazine_crop_top: int = int(os.getenv("MAGAZINE_CROP_TOP", "260"))
+    magazine_crop_right: int = int(os.getenv("MAGAZINE_CROP_RIGHT", "260"))
+    magazine_crop_bottom: int = int(os.getenv("MAGAZINE_CROP_BOTTOM", "130"))
+
 
 settings = Settings()
