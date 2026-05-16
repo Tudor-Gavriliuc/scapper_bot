@@ -16,7 +16,7 @@ def main() -> None:
     _log("Daily posting job started")
 
     try:
-        _log("Running products pipeline (Kaufland + Linella)")
+        _log("Running products pipeline (Kaufland + Linella + Metro)")
         run_products_pipeline()
     except Exception as exc:
         _log(f"Products pipeline failed: {exc}")

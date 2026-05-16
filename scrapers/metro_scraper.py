@@ -14,15 +14,22 @@ class MetroScraper(BaseScraper):
     source_name = "Metro"
 
     def scrape(self) -> List[Dict]:
+        products = self._scrape_with_drission()
+        if products is not None:
+            return products
+
+        print("[WARN] Metro falling back to Playwright scraper.")
+        return self._scrape_with_playwright()
+
+    def _scrape_with_drission(self) -> List[Dict] | None:
         try:
             from DrissionPage import ChromiumOptions, ChromiumPage
         except ImportError:
-            print("[ERROR] DrissionPage is not installed. Metro scraper skipped.")
-            return []
+            return None
 
         options = ChromiumOptions()
         run_in_ci = os.getenv("GITHUB_ACTIONS", "").lower() == "true"
-        run_headless = self.settings.metro_headless or run_in_ci
+        run_headless = self.settings.metro_headless
 
         if run_headless:
             options.set_argument("--headless=new")
@@ -35,7 +42,15 @@ class MetroScraper(BaseScraper):
             options.set_argument("--no-sandbox")
             options.set_argument("--disable-dev-shm-usage")
 
-        page = ChromiumPage(options)
+        # Let Drission allocate a free debug port to avoid stale port collisions.
+        options.auto_port()
+
+        try:
+            page = ChromiumPage(options)
+        except Exception as exc:
+            print(f"[WARN] Metro Drission browser start failed: {exc}")
+            return None
+
         products: List[Dict] = []
 
         try:
@@ -97,11 +112,94 @@ class MetroScraper(BaseScraper):
 
             print(
                 "[INFO] Metro scraped products: "
-                f"{len(products)} (count={total_count}, pages={total_pages})"
+                f"{len(products)} (count={total_count}, pages={total_pages}, engine=drission)"
             )
             return products
         finally:
             page.quit()
+
+    def _scrape_with_playwright(self) -> List[Dict]:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            print("[ERROR] Playwright is not installed. Metro scraper skipped.")
+            return []
+
+        run_in_ci = os.getenv("GITHUB_ACTIONS", "").lower() == "true"
+        run_headless = self.settings.metro_headless
+
+        products: List[Dict] = []
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=run_headless,
+                args=["--no-sandbox", "--disable-dev-shm-usage"] if run_in_ci else None,
+            )
+            page = browser.new_page(viewport={"width": 1920, "height": 1080})
+
+            try:
+                first_html = self._load_page_html_playwright(page, 1)
+                if not first_html:
+                    print("[WARN] Metro first page HTML is empty.")
+                    return []
+
+                first_payload = self._extract_next_data_payload(first_html)
+                if not first_payload:
+                    print("[WARN] Metro __NEXT_DATA__ was not found.")
+                    return []
+
+                category_data = self._extract_category_data(first_payload)
+                if not category_data:
+                    print("[WARN] Metro categoryData payload missing.")
+                    return []
+
+                total_count = int(category_data.get("count") or 0)
+                first_page_results = category_data.get("results") or []
+                page_size = len(first_page_results) if first_page_results else 30
+                total_pages = max(1, math.ceil(total_count / max(page_size, 1)))
+                if self.settings.metro_max_pages > 0:
+                    total_pages = min(total_pages, self.settings.metro_max_pages)
+
+                seen_ids = set()
+
+                for item in first_page_results:
+                    product = self._map_product(item)
+                    dedupe_id = product["product_url"] or clean_text(item.get("ean"))
+                    if dedupe_id and dedupe_id in seen_ids:
+                        continue
+                    if dedupe_id:
+                        seen_ids.add(dedupe_id)
+                    products.append(product)
+
+                for page_num in range(2, total_pages + 1):
+                    html = self._load_page_html_playwright(page, page_num)
+                    if not html:
+                        continue
+
+                    payload = self._extract_next_data_payload(html)
+                    if not payload:
+                        continue
+
+                    page_category_data = self._extract_category_data(payload)
+                    if not page_category_data:
+                        continue
+
+                    page_results = page_category_data.get("results") or []
+                    for item in page_results:
+                        product = self._map_product(item)
+                        dedupe_id = product["product_url"] or clean_text(item.get("ean"))
+                        if dedupe_id and dedupe_id in seen_ids:
+                            continue
+                        if dedupe_id:
+                            seen_ids.add(dedupe_id)
+                        products.append(product)
+
+                print(
+                    "[INFO] Metro scraped products: "
+                    f"{len(products)} (count={total_count}, pages={total_pages}, engine=playwright)"
+                )
+                return products
+            finally:
+                browser.close()
 
     def _load_page_html(self, page, page_number: int) -> Optional[str]:
         url = self._build_page_url(self.settings.metro_promotions_url, page_number)
@@ -148,6 +246,24 @@ class MetroScraper(BaseScraper):
             return json.loads(raw_json)
         except json.JSONDecodeError:
             return None
+
+    def _load_page_html_playwright(self, page, page_number: int) -> Optional[str]:
+        url = self._build_page_url(self.settings.metro_promotions_url, page_number)
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as exc:
+            print(f"[WARN] Metro page load failed: page={page_number}, err={exc}")
+            return None
+
+        wait_s = max(self.settings.metro_page_wait_seconds, 0.0)
+        if wait_s > 0:
+            page.wait_for_timeout(int(wait_s * 1000))
+
+        html = page.content() or ""
+        if "__NEXT_DATA__" not in html:
+            page.wait_for_timeout(1000)
+            html = page.content() or ""
+        return html
 
     def _extract_category_data(self, payload: dict) -> Optional[dict]:
         return (
