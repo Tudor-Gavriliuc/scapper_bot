@@ -16,9 +16,14 @@ from bs4 import BeautifulSoup
 from core.normalizer import clean_text
 from scrapers.base_scraper import BaseScraper
 
-# Configure pytesseract path if set in environment
+# Configure pytesseract path
+# Check environment variable first, then try common Windows location
 if os.getenv("PYTESSERACT_PATH"):
     pytesseract.pytesseract.pytesseract_cmd = os.getenv("PYTESSERACT_PATH")
+elif os.path.exists(r'C:\Program Files\Tesseract-OCR\tesseract.exe'):
+    pytesseract.pytesseract.pytesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+elif os.path.exists(r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'):
+    pytesseract.pytesseract.pytesseract_cmd = r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'
 
 
 class MagazineScraper(BaseScraper):
@@ -175,18 +180,25 @@ class MagazineScraper(BaseScraper):
 
                 # Create product entry
                 product = {
-                    "name": f"Magazine Product P{page_number} D{discount}",
-                    "old_price": old_price if old_price else "",
-                    "new_price": new_price if new_price else "",
+                    "source_code": self.source_code,
+                    "source_name": self.source_name,
+                    "name": f"Magazine Offer - {discount}% discount",
+                    "old_price": old_price if old_price else "0",
+                    "new_price": new_price if new_price else "0",
                     "discount": f"{discount}%",
-                    "category": "Magazine Offer",
+                    "category": "Magazine Promotion",
                     "valid_from": datetime.now().strftime("%d.%m.%Y"),
                     "valid_to": (datetime.now() + timedelta(days=7)).strftime("%d.%m.%Y"),
                     "image_url": crop_path,
-                    "link": self.settings.magazine_url,
+                    "product_url": self.settings.magazine_url,
                 }
-
-                results.append(product)
+                
+                # Only add if we have either new_price or old_price extracted
+                if old_price or new_price:
+                    results.append(product)
+                else:
+                    # Don't add if no prices could be extracted
+                    print(f"[WARN] Page {page_number}: Discount {discount}% detected but prices not extracted via OCR")
 
             print(f"[INFO] Page {page_number}: Found {len(results)} products with discount >= {self.settings.min_discount_percentage}%")
 
@@ -234,28 +246,49 @@ class MagazineScraper(BaseScraper):
     @staticmethod
     def _parse_prices(text: str) -> Tuple[Optional[str], Optional[str]]:
         """Extract old_price and new_price from OCR text using regex."""
-        # Find all numbers that look like prices (can have . or ,)
-        prices = re.findall(r"\d+[.,]\d{1,2}", text)
-        prices = [p.replace(",", ".") for p in prices]
-
-        old_price = None
-        new_price = None
-
-        if len(prices) >= 2:
-            # Typically first price is new (lower), second is old (higher)
-            # But OCR order may vary - we assume higher price is old
-            try:
-                price_floats = [float(p) for p in prices[:2]]
-                if price_floats[0] < price_floats[1]:
-                    new_price = prices[0]
-                    old_price = prices[1]
-                else:
-                    new_price = prices[1]
-                    old_price = prices[0]
-            except (ValueError, IndexError):
-                if len(prices) >= 1:
-                    new_price = prices[0]
-                if len(prices) >= 2:
-                    old_price = prices[1]
-
-        return old_price, new_price
+        if not text or len(text) < 3:
+            return None, None
+        
+        # Try multiple price patterns
+        # Pattern 1: Prices with . or , as decimal separator
+        prices = re.findall(r'\d{1,4}[.,]\d{1,2}', text)
+        
+        if not prices:
+            # Pattern 2: Prices without decimals (for integer prices)
+            prices = re.findall(r'\b\d{2,4}\b', text)
+        
+        if not prices:
+            return None, None
+        
+        # Clean prices (replace commas with dots)
+        prices = [p.replace(',', '.') for p in prices]
+        
+        try:
+            # Convert to floats for comparison
+            price_floats = []
+            for p in prices:
+                try:
+                    price_floats.append((float(p), p))
+                except ValueError:
+                    continue
+            
+            if len(price_floats) == 0:
+                return None, None
+            
+            # Sort by price value
+            price_floats.sort(key=lambda x: x[0])
+            
+            # For 2+ prices, assume lowest is new, highest is old
+            if len(price_floats) >= 2:
+                new_price = price_floats[0][1]
+                old_price = price_floats[-1][1]
+                return old_price, new_price
+            
+            # For single price, might be new price only
+            if len(price_floats) == 1:
+                return None, price_floats[0][1]
+        
+        except (ValueError, IndexError):
+            pass
+        
+        return None, None
