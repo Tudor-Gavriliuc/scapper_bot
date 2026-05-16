@@ -25,6 +25,7 @@ Thumbs.db
 data/*_today.json
 
 # SQLite runtime artifacts
+*.db
 *.db-shm
 *.db-wal
 
