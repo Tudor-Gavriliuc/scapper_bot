@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from core.config import settings
 from core.revista_state import mark_posted, was_posted
 from core.telegram_bot import TelegramBot
-from extract_nr1_booklet_images import OUTPUT_PATH, extract_today_booklet_images
+from extract_bonus_booklet_images import OUTPUT_PATH, extract_bonus_booklet_images
 
 
 def main() -> None:
@@ -14,57 +13,55 @@ def main() -> None:
         print("[WARN] Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID.")
         return
 
-    payload = extract_today_booklet_images()
+    payload = extract_bonus_booklet_images()
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     bot = TelegramBot(settings.telegram_bot_token, settings.telegram_channel_id)
 
-    date_label = payload.get("booklet_date") or "-"
-    booklet_url = payload.get("booklet_url") or ""
+    catalog_url = payload.get("catalog_url") or ""
+    valid_from = payload.get("valid_from") or "-"
+    valid_to = payload.get("valid_to") or "-"
     images = payload.get("images") or []
     image_urls = [str(u).strip() for u in images if str(u).strip()]
-    is_valid = bool(payload.get("is_valid_for_today", True))
+    is_valid = bool(payload.get("is_valid_for_today", False))
 
     if not is_valid:
-        print(f"[WARN] Nr1 booklet is not valid for today, skipping: {booklet_url}")
+        print(f"[WARN] Bonus catalog not valid for today, skipping: {catalog_url}")
         return
 
-    if was_posted("nr1", booklet_url):
-        print(f"[INFO] Nr1 already posted, skipping duplicate: {booklet_url}")
+    if was_posted("bonus", catalog_url):
+        print(f"[INFO] Bonus already posted, skipping duplicate: {catalog_url}")
         return
 
     if not image_urls:
-        print(f"[WARN] Nr1 booklet has no page images, skipping: {booklet_url}")
+        print(f"[WARN] Bonus catalog has no page images, skipping: {catalog_url}")
         return
 
     sent_groups = bot.send_media_urls(
-        source_code="nr1",
-        source_name="Nr1",
+        source_code="bonus",
+        source_name="Bonus",
         image_urls=image_urls,
         chunk_size=10,
         delay_seconds=settings.telegram_send_delay_seconds,
     )
 
     message = (
-        "🔥 Promotii Nr1 azi\n"
-        f"📅 Valabil: {date_label}\n"
-        f"🔗 Link: {booklet_url}\n\n"
-        "#nr1"
+        "🔥 Promotii Bonus azi\n"
+        f"📅 Valabil: {valid_from} - {valid_to}\n\n"
+        "#bonus"
     )
-
     text_ok = bot.send_text(message, parse_mode="HTML", disable_web_page_preview=False)
 
     if sent_groups > 0:
-        mark_posted("nr1", booklet_url)
+        mark_posted("bonus", catalog_url)
     else:
-        print("[WARN] Nr1 pages were not sent; state not marked as posted.")
+        print("[WARN] Bonus pages were not sent; state not marked as posted.")
 
     print(
-        "[INFO] Nr1 booklet posted "
-        f"booklet_url={booklet_url}, date={date_label}, "
-        f"images={len(image_urls)}, groups={sent_groups}, message_sent={text_ok}, saved={OUTPUT_PATH}"
+        "[INFO] Bonus catalog posted "
+        f"catalog_url={catalog_url}, images={len(image_urls)}, groups={sent_groups}, message_sent={text_ok}, saved={OUTPUT_PATH}"
     )
 
 

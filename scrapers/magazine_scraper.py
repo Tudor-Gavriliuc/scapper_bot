@@ -2,7 +2,6 @@
 
 import os
 import re
-import tempfile
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 
@@ -27,12 +26,14 @@ elif os.path.exists(r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'):
 
 
 class MagazineScraper(BaseScraper):
-    source_code = "magazine"
-    source_name = "Magazine Local"
+    source_code = "local"
+    source_name = "Local"
 
     def __init__(self, settings):
         super().__init__(settings)
-        self.temp_dir = tempfile.mkdtemp(prefix="magazine_scraper_")
+        # Save magazine images to a permanent folder
+        self.image_dir = os.path.join(os.path.dirname(__file__), '..', 'data', 'magazine_images')
+        os.makedirs(self.image_dir, exist_ok=True)
 
     def scrape(self) -> List[Dict]:
         """Download magazine pages and extract products with discount > MIN_DISCOUNT."""
@@ -106,7 +107,7 @@ class MagazineScraper(BaseScraper):
                     )
                     response.raise_for_status()
 
-                    page_path = os.path.join(self.temp_dir, f"magazine_page_{index}.png")
+                    page_path = os.path.join(self.image_dir, f"magazine_page_{index}.png")
                     with open(page_path, "wb") as f:
                         f.write(response.content)
 
@@ -122,7 +123,7 @@ class MagazineScraper(BaseScraper):
         return page_paths
 
     def _process_page(self, page_path: str, page_number: int) -> List[Dict]:
-        """Process a single magazine page: OCR → find discounts → crop → extract data."""
+        """Process a single magazine page: OCR discounts, then post full page image."""
         results: List[Dict] = []
 
         try:
@@ -139,68 +140,37 @@ class MagazineScraper(BaseScraper):
                 config="--psm 6",
             )
 
-            # Find discount percentages in OCR results
+            qualifying_discounts: List[int] = []
             for _, row in ocr_data.iterrows():
                 text = str(row.get("text", "")).strip()
                 discount = self._extract_discount_number(text)
-
-                if discount is None or discount < self.settings.min_discount_percentage:
+                if discount is None:
                     continue
+                if discount >= self.settings.min_discount_percentage:
+                    qualifying_discounts.append(discount)
 
-                x = int(row["left"])
-                y = int(row["top"])
-                w = int(row["width"])
-                h = int(row["height"])
-
-                # Crop the product region around the discount text
-                crop = self._crop_safe(
-                    image,
-                    x - self.settings.magazine_crop_left,
-                    y - self.settings.magazine_crop_top,
-                    x + self.settings.magazine_crop_right,
-                    y + self.settings.magazine_crop_bottom,
-                )
-
-                if crop is None or crop.size == 0:
-                    continue
-
-                # Save crop image
-                crop_filename = f"magazine_page_{page_number}_discount_{discount}_{x}_{y}.png"
-                crop_path = os.path.join(self.temp_dir, crop_filename)
-                cv2.imwrite(crop_path, crop)
-
-                # OCR the cropped product region to extract prices
-                crop_text = pytesseract.image_to_string(
-                    Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)),
-                    lang=self.settings.magazine_ocr_language,
-                    config="--psm 6",
-                )
-
-                old_price, new_price = self._parse_prices(crop_text)
-
-                # Create product entry
+            if qualifying_discounts:
+                top_discount = max(qualifying_discounts)
                 product = {
                     "source_code": self.source_code,
                     "source_name": self.source_name,
-                    "name": f"Magazine Offer - {discount}% discount",
-                    "old_price": old_price if old_price else "0",
-                    "new_price": new_price if new_price else "0",
-                    "discount": f"{discount}%",
-                    "category": "Magazine Promotion",
+                    "name": f"Pagina {page_number}",
+                    # Required by DB schema/validation, discount drives filtering logic.
+                    "new_price": str(top_discount),
+                    "old_price": "-",
+                    "discount": f"{top_discount}%",
+                    "category": "Magazine Page",
                     "valid_from": datetime.now().strftime("%d.%m.%Y"),
                     "valid_to": (datetime.now() + timedelta(days=7)).strftime("%d.%m.%Y"),
-                    "image_url": crop_path,
+                    "image_url": os.path.abspath(page_path),
                     "product_url": self.settings.magazine_url,
                 }
-                
-                # Only add if we have either new_price or old_price extracted
-                if old_price or new_price:
-                    results.append(product)
-                else:
-                    # Don't add if no prices could be extracted
-                    print(f"[WARN] Page {page_number}: Discount {discount}% detected but prices not extracted via OCR")
+                results.append(product)
 
-            print(f"[INFO] Page {page_number}: Found {len(results)} products with discount >= {self.settings.min_discount_percentage}%")
+            print(
+                f"[INFO] Page {page_number}: Found {len(qualifying_discounts)} discounts "
+                f">= {self.settings.min_discount_percentage}%"
+            )
 
         except Exception as e:
             print(f"[ERROR] Error processing magazine page {page_number}: {e}")
@@ -222,6 +192,8 @@ class MagazineScraper(BaseScraper):
                 pass
 
         return None
+
+    # Legacy helpers kept for potential future OCR tuning.
 
     @staticmethod
     def _crop_safe(

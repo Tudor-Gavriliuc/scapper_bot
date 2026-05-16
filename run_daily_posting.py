@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from main import main as run_products_pipeline
+from send_bonus_booklet_to_telegram import main as send_bonus_revista
 from send_local_revista_to_telegram import main as send_local_revista
 from send_nr1_booklet_to_telegram import main as send_nr1_revista
 
@@ -26,6 +27,12 @@ def main() -> None:
         send_nr1_revista()
     except Exception as exc:
         _log(f"Nr1 sending failed: {exc}")
+
+    try:
+        _log("Sending Bonus revista pages")
+        send_bonus_revista()
+    except Exception as exc:
+        _log(f"Bonus sending failed: {exc}")
 
     try:
         _log("Sending Local revista link")

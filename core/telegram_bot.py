@@ -1,6 +1,8 @@
 from typing import Dict, List
 import ast
 import json
+import mimetypes
+import os
 import time
 
 import requests
@@ -123,6 +125,19 @@ class TelegramBot:
         source_name: str,
         products: List[Dict],
     ) -> str:
+        if (source_code or "").strip().lower() in {"local", "magazine"}:
+            valid_from = ""
+            valid_to = ""
+            for p in products:
+                valid_from = valid_from or (p.get("valid_from") or "").strip()
+                valid_to = valid_to or (p.get("valid_to") or "").strip()
+
+            lines = [f"🔥 Promotii {source_name} azi", ""]
+            if valid_from or valid_to:
+                lines.append(f"📅 Valabil: {valid_from} - {valid_to}")
+            lines.extend(["", "#local"])
+            return "\n".join(lines)
+
         lines = [f"🔥 Promotii {source_name} azi", ""]
 
         for product in products:
@@ -231,26 +246,36 @@ class TelegramBot:
         source_name: str,
         products: List[Dict],
     ) -> bool:
-        media_items = []
-        for product in products:
-            image_url = self._extract_image_url(product.get("image_url"))
-            if not image_url:
-                continue
-
-            media_items.append(
-                {
-                    "type": "photo",
-                    "media": image_url,
-                }
-            )
-
-        if not media_items:
+        # Only include products with a valid image
+        products_with_images = [p for p in products if self._extract_image_url(p.get("image_url"))]
+        if not products_with_images:
+            print("[WARN] No products with images to post in media group.")
             return False
 
         # Telegram accepts up to 10 media items per group.
-        media_items = media_items[:10]
+        products_with_images = products_with_images[:10]
+
+        media_items = []
+        for product in products_with_images:
+            image_url = self._extract_image_url(product.get("image_url"))
+            media_items.append({
+                "type": "photo",
+                "media": image_url,
+            })
 
         endpoint = f"{self.base_url}/sendMediaGroup"
+
+        # Local file paths cannot be fetched by Telegram via URL, upload directly.
+        has_local_files = any(not str(item.get("media") or "").startswith("http") for item in media_items)
+        if has_local_files:
+            uploaded_ok = self._send_media_group_as_uploaded_files(endpoint, media_items)
+            if uploaded_ok:
+                print(
+                    "[INFO] Telegram posted uploaded media batch "
+                    f"source={source_code}, source_name={source_name}, images={len(media_items)}"
+                )
+                return True
+
         payload = {
             "chat_id": self.channel_id,
             "media": media_items,
@@ -372,6 +397,23 @@ class TelegramBot:
         return False
 
     def _download_image_bytes(self, image_url: str) -> tuple[bytes, str] | None:
+        local_path = str(image_url or "").strip()
+        if local_path and os.path.isfile(local_path):
+            try:
+                with open(local_path, "rb") as f:
+                    content = f.read()
+            except OSError as exc:
+                print(f"[WARN] Local image read failed for Telegram upload: path={local_path}, err={exc}")
+                return None
+
+            if not content:
+                return None
+
+            guessed = mimetypes.guess_type(local_path)[0] or "image/jpeg"
+            if not guessed.startswith("image/"):
+                guessed = "image/jpeg"
+            return content, guessed
+
         try:
             response = requests.get(image_url, timeout=20)
             response.raise_for_status()
@@ -401,6 +443,12 @@ class TelegramBot:
             text = raw_value.strip()
             if text.startswith("http"):
                 return text
+
+            # Local file path support for OCR-cropped images.
+            if text:
+                normalized = os.path.abspath(text)
+                if os.path.isfile(normalized):
+                    return normalized
 
             # Some rows may contain a serialized dict from older runs.
             if text.startswith("{") and text.endswith("}"):

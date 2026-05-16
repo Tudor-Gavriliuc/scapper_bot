@@ -75,11 +75,11 @@ jobs:
 
           conn = sqlite3.connect("data/promotions.db")
           conn.execute(
-              "UPDATE products SET posted_to_telegram = 0 WHERE source_code IN ('kaufland', 'linella', 'local', 'magazine')"
+              "UPDATE products SET posted_to_telegram = 0 WHERE source_code IN ('kaufland', 'linella', 'local', 'magazine', 'bonus')"
           )
           conn.commit()
           conn.close()
-            print("Reset posted_to_telegram for kaufland, linella, local, magazine")
+            print("Reset posted_to_telegram for kaufland, linella, local, magazine, bonus")
           PY
 
       - name: Run daily posting

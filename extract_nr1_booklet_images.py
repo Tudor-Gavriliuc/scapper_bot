@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 BASE_URL = "https://nr1.md"
 BOOKLETS_URL = "https://nr1.md/ro/booklets/"
 OUTPUT_PATH = Path("data/nr1_booklet_images_today.json")
+MAX_BOOKLET_AGE_DAYS = 14
 
 
 def _extract_date_from_slug(url: str) -> Optional[date]:
@@ -73,6 +74,18 @@ def _pick_today_booklet(links: List[str]) -> Optional[Tuple[str, Optional[date]]
         return fallback[0]
 
     return links[0], None
+
+
+def _is_booklet_date_valid(booklet_date: Optional[date]) -> bool:
+    if booklet_date is None:
+        return True
+
+    today = date.today()
+    if booklet_date > today:
+        return False
+
+    age_days = (today - booklet_date).days
+    return age_days <= MAX_BOOKLET_AGE_DAYS
 
 
 def _get_anyflip_iframe(booklet_url: str) -> str:
@@ -142,6 +155,12 @@ def extract_today_booklet_images() -> dict:
         raise RuntimeError("No booklet links found")
 
     booklet_url, booklet_date = selected
+    if not _is_booklet_date_valid(booklet_date):
+        raise RuntimeError(
+            "Selected NR1 booklet date is not valid for today: "
+            f"{booklet_date.isoformat() if booklet_date else '-'}"
+        )
+
     anyflip_url = _get_anyflip_iframe(booklet_url)
     images = _collect_anyflip_images(anyflip_url)
 
@@ -149,6 +168,7 @@ def extract_today_booklet_images() -> dict:
         "source": "nr1",
         "booklet_url": booklet_url,
         "booklet_date": booklet_date.isoformat() if booklet_date else "",
+        "is_valid_for_today": _is_booklet_date_valid(booklet_date),
         "anyflip_url": anyflip_url,
         "images": images,
         "image_count": len(images),
