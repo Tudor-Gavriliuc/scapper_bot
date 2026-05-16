@@ -40,6 +40,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install Tesseract OCR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-ron
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -70,11 +75,11 @@ jobs:
 
           conn = sqlite3.connect("data/promotions.db")
           conn.execute(
-              "UPDATE products SET posted_to_telegram = 0 WHERE source_code IN ('kaufland', 'linella')"
+              "UPDATE products SET posted_to_telegram = 0 WHERE source_code IN ('kaufland', 'linella', 'local', 'magazine')"
           )
           conn.commit()
           conn.close()
-          print("Reset posted_to_telegram for kaufland and linella")
+            print("Reset posted_to_telegram for kaufland, linella, local, magazine")
           PY
 
       - name: Run daily posting
