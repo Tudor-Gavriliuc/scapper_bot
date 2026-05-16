@@ -1,5 +1,6 @@
 from typing import Dict, List
 import ast
+import json
 import time
 
 import requests
@@ -262,7 +263,16 @@ class TelegramBot:
             )
             return True
 
-        # Fallback: try sending images one by one so one bad URL does not fail all.
+        # Fallback 1: upload media as files (attach://) when Telegram cannot fetch URLs.
+        uploaded_ok = self._send_media_group_as_uploaded_files(endpoint, media_items)
+        if uploaded_ok:
+            print(
+                "[WARN] Telegram media URL batch failed; uploaded files succeeded "
+                f"source={source_code}, source_name={source_name}, images={len(media_items)}"
+            )
+            return True
+
+        # Fallback 2: try sending images one by one so one bad URL does not fail all.
         sent_count = 0
         photo_endpoint = f"{self.base_url}/sendPhoto"
         for media in media_items:
@@ -282,6 +292,109 @@ class TelegramBot:
 
         print(f"[WARN] Telegram media batch failed source={source_code}")
         return False
+
+    def _send_media_group_as_uploaded_files(
+        self,
+        endpoint: str,
+        media_items: List[Dict],
+    ) -> bool:
+        upload_entries = []
+        for idx, media in enumerate(media_items):
+            image_url = str(media.get("media") or "").strip()
+            if not image_url:
+                continue
+
+            downloaded = self._download_image_bytes(image_url)
+            if not downloaded:
+                continue
+
+            content, content_type = downloaded
+            upload_entries.append((idx, content, content_type))
+
+        if not upload_entries:
+            return False
+
+        files = {}
+        uploaded_media = []
+        for idx, content, content_type in upload_entries:
+            attach_name = f"file{idx}"
+            ext = ".jpg"
+            if content_type == "image/png":
+                ext = ".png"
+            elif content_type == "image/webp":
+                ext = ".webp"
+
+            filename = f"image_{idx}{ext}"
+            files[attach_name] = (filename, content, content_type)
+            uploaded_media.append(
+                {
+                    "type": "photo",
+                    "media": f"attach://{attach_name}",
+                }
+            )
+
+        if not uploaded_media:
+            return False
+
+        form_data = {
+            "chat_id": self.channel_id,
+            "media": json.dumps(uploaded_media),
+        }
+
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = requests.post(endpoint, data=form_data, files=files, timeout=35)
+                if response.status_code == 429:
+                    retry_after = 2
+                    try:
+                        retry_after = int(
+                            response.json().get("parameters", {}).get("retry_after", retry_after)
+                        )
+                    except Exception:
+                        pass
+                    time.sleep(retry_after)
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+                if data.get("ok"):
+                    return True
+
+                print(f"[WARN] Telegram uploaded media group API error: {data}")
+                return False
+            except requests.RequestException as exc:
+                if attempt == max_attempts:
+                    print(f"[WARN] Telegram uploaded media group failed: {exc}")
+                    return False
+                time.sleep(2)
+
+        return False
+
+    def _download_image_bytes(self, image_url: str) -> tuple[bytes, str] | None:
+        try:
+            response = requests.get(image_url, timeout=20)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            print(f"[WARN] Image download failed for Telegram upload: url={image_url}, err={exc}")
+            return None
+
+        content_type = str(response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if content_type and not content_type.startswith("image/"):
+            print(
+                "[WARN] Image download returned non-image content-type "
+                f"url={image_url}, content_type={content_type}"
+            )
+            return None
+
+        content = response.content or b""
+        if not content:
+            return None
+
+        if not content_type:
+            content_type = "image/jpeg"
+
+        return content, content_type
 
     def _extract_image_url(self, raw_value) -> str:
         if isinstance(raw_value, str):
