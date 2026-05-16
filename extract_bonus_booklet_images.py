@@ -51,14 +51,15 @@ def _parse_validity_range(text: str) -> Tuple[Optional[date], Optional[date]]:
 
 
 def _collect_catalog_candidates() -> List[dict]:
-    response = requests.get(
-        SHOP_URL,
-        timeout=30,
-        headers={"User-Agent": "Mozilla/5.0"},
-    )
-    response.raise_for_status()
+    # Use Playwright to bypass bot-detection (requests gets 403 on server IPs).
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 1400, "height": 900})
+        page.goto(SHOP_URL, wait_until="domcontentloaded", timeout=30000)
+        html = page.content()
+        browser.close()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(html, "html.parser")
 
     out: List[dict] = []
     seen = set()

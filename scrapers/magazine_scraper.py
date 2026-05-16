@@ -136,13 +136,13 @@ class MagazineScraper(BaseScraper):
             ocr_data = pytesseract.image_to_data(
                 Image.open(page_path),
                 lang=self.settings.magazine_ocr_language,
-                output_type=pytesseract.Output.DATAFRAME,
+                output_type=pytesseract.Output.DICT,
                 config="--psm 6",
             )
 
             qualifying_discounts: List[int] = []
-            for _, row in ocr_data.iterrows():
-                text = str(row.get("text", "")).strip()
+            for text in ocr_data.get("text", []):
+                text = str(text).strip()
                 discount = self._extract_discount_number(text)
                 if discount is None:
                     continue
