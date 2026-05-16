@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from core.config import settings
 from core.database import Database
-from core.normalizer import get_product_discount_percentage
+from core.normalizer import get_product_discount_percentage, is_product_expired
 from core.telegram_bot import TelegramBot
 from scrapers.scraper_registry import get_scrapers
 
@@ -38,7 +38,12 @@ def main() -> None:
 
     filtered_products = []
     excluded_by_discount = 0
+    excluded_by_expiry = 0
     for product in all_products:
+        if is_product_expired(product):
+            excluded_by_expiry += 1
+            continue
+
         discount_pct = get_product_discount_percentage(product)
         if discount_pct is None or discount_pct <= settings.min_discount_percentage:
             excluded_by_discount += 1
@@ -51,6 +56,8 @@ def main() -> None:
             f"(>{settings.min_discount_percentage}%): kept={len(filtered_products)}, "
             f"excluded={excluded_by_discount}"
         )
+        if excluded_by_expiry:
+            print(f"[INFO] Expiry filter applied: excluded_expired={excluded_by_expiry}")
 
     inserted_count = db.insert_new_products(filtered_products)
     print(f"[INFO] New products inserted: {inserted_count}")
@@ -63,11 +70,20 @@ def main() -> None:
             for p in unposted
             if (get_product_discount_percentage(p) or 0) > settings.min_discount_percentage
         ]
+        after_discount = len(unposted)
+        unposted = [p for p in unposted if not is_product_expired(p)]
+        excluded_expired_existing = after_discount - len(unposted)
+
         if len(unposted) != before_unposted:
             print(
                 "[INFO] Filtered existing unposted products by discount "
                 f"(>{settings.min_discount_percentage}%): kept={len(unposted)}, "
                 f"excluded={before_unposted - len(unposted)}"
+            )
+        if excluded_expired_existing:
+            print(
+                "[INFO] Filtered existing unposted products by expiry: "
+                f"excluded={excluded_expired_existing}"
             )
 
     if not unposted:

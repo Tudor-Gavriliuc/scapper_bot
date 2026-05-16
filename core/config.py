@@ -114,5 +114,16 @@ class Settings:
         "a[href]",
     )
 
+    enable_metro: bool = _as_bool(os.getenv("ENABLE_METRO", "1"))
+    metro_promotions_url: str = os.getenv(
+        "METRO_PROMOTIONS_URL",
+        "https://metro.zakaz.md/ro/custom-categories/promotions/",
+    )
+    metro_base_url: str = os.getenv("METRO_BASE_URL", "https://metro.zakaz.md")
+    metro_max_pages: int = int(os.getenv("METRO_MAX_PAGES", "80"))
+    metro_page_wait_seconds: float = float(os.getenv("METRO_PAGE_WAIT_SECONDS", "2.0"))
+    metro_headless: bool = _as_bool(os.getenv("METRO_HEADLESS", "0"))
+    metro_start_minimized: bool = _as_bool(os.getenv("METRO_START_MINIMIZED", "1"))
+
 
 settings = Settings()

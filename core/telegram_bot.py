@@ -1,4 +1,5 @@
 from typing import Dict, List
+import ast
 import time
 
 import requests
@@ -85,7 +86,7 @@ class TelegramBot:
             return False
 
         message = self._format_message(product)
-        image_url = product.get("image_url", "")
+        image_url = self._extract_image_url(product.get("image_url", ""))
 
         if image_url:
             photo_endpoint = f"{self.base_url}/sendPhoto"
@@ -231,7 +232,7 @@ class TelegramBot:
     ) -> bool:
         media_items = []
         for product in products:
-            image_url = (product.get("image_url") or "").strip()
+            image_url = self._extract_image_url(product.get("image_url"))
             if not image_url:
                 continue
 
@@ -259,6 +260,55 @@ class TelegramBot:
                 "[INFO] Telegram posted media batch "
                 f"source={source_code}, source_name={source_name}, images={len(media_items)}"
             )
-        else:
-            print(f"[WARN] Telegram media batch failed source={source_code}")
-        return ok
+            return True
+
+        # Fallback: try sending images one by one so one bad URL does not fail all.
+        sent_count = 0
+        photo_endpoint = f"{self.base_url}/sendPhoto"
+        for media in media_items:
+            photo_payload = {
+                "chat_id": self.channel_id,
+                "photo": media["media"],
+            }
+            if self._post_with_retry(photo_endpoint, photo_payload):
+                sent_count += 1
+
+        if sent_count:
+            print(
+                "[WARN] Telegram media batch failed; fallback sendPhoto succeeded "
+                f"source={source_code}, sent_images={sent_count}/{len(media_items)}"
+            )
+            return True
+
+        print(f"[WARN] Telegram media batch failed source={source_code}")
+        return False
+
+    def _extract_image_url(self, raw_value) -> str:
+        if isinstance(raw_value, str):
+            text = raw_value.strip()
+            if text.startswith("http"):
+                return text
+
+            # Some rows may contain a serialized dict from older runs.
+            if text.startswith("{") and text.endswith("}"):
+                try:
+                    parsed = ast.literal_eval(text)
+                    if isinstance(parsed, dict):
+                        return self._extract_image_url(parsed)
+                except Exception:
+                    return ""
+            return ""
+
+        if isinstance(raw_value, dict):
+            preferred_keys = ("s350x350", "s200x200", "s150x150", "s1350x1350")
+            for key in preferred_keys:
+                candidate = str(raw_value.get(key) or "").strip()
+                if candidate.startswith("http"):
+                    return candidate
+
+            for value in raw_value.values():
+                candidate = str(value or "").strip()
+                if candidate.startswith("http"):
+                    return candidate
+
+        return ""

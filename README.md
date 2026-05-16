@@ -5,7 +5,7 @@ Aplicatie Python pentru colectarea promotiilor alimentare din magazine online, s
 ## Ce face MVP-ul
 
 - colecteaza promotii din Kaufland Moldova (prima sursa)
-- colecteaza promotii din Kaufland Moldova si Linella
+- colecteaza promotii din Kaufland Moldova, Linella si Metro (zakaz.md)
 - arhitectura extensibila pentru mai multe surse
 - normalizeaza datele intr-un format unic
 - salveaza doar produse noi (fara duplicate)
@@ -66,6 +66,8 @@ copy .env.example .env
 
 3. Optional: ajusteaza selectorii Kaufland din `.env` daca se schimba structura HTML.
 4. Optional: ajusteaza selectorii Linella din `.env` daca se schimba structura HTML.
+5. Optional: ajusteaza parametrii Metro (`METRO_MAX_PAGES`, `METRO_PAGE_WAIT_SECONDS`) in functie de viteza conexiunii.
+6. Optional: foloseste `METRO_HEADLESS=1` pe server/CI (fara desktop); local poti lasa `METRO_HEADLESS=0`.
 
 ## Cum creezi botul Telegram
 
@@ -137,4 +139,6 @@ Model de format returnat de orice scraper:
 
 - Daca nu se gasesc produse, aplicatia afiseaza mesaj clar in consola.
 - Scraperul Kaufland este gandit sa fie usor de ajustat prin selectori in `.env`.
+- Scraperul Metro foloseste Chromium prin DrissionPage pentru a trece de protectia anti-bot si a citi paginile de promotii.
+- Workflow-ul GitHub Actions restaureaza/salveaza `data/promotions.db` in cache, astfel deduplicarea si statusul `posted_to_telegram` se pastreaza intre rulari.
 - Pentru rulare periodica, poti folosi Task Scheduler (Windows) sau cron (Linux).

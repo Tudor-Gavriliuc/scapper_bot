@@ -1,5 +1,6 @@
 import hashlib
 import re
+from datetime import date, datetime
 from typing import Any
 
 
@@ -74,3 +75,42 @@ def get_product_discount_percentage(product: dict) -> float | None:
         return None
 
     return round(((old_price - new_price) / old_price) * 100, 2)
+
+
+def parse_promotion_date(value: Any) -> date | None:
+    text = clean_text(value)
+    if not text:
+        return None
+
+    # Accept common source formats: dd.mm.yyyy, yyyy-mm-dd, dd/mm/yyyy.
+    formats = ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y")
+    for fmt in formats:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+
+    # If value contains a range like "01.05.2026 - 07.05.2026", use the end date.
+    range_match = re.search(
+        r"(\d{1,2}[./]\d{1,2}[./]\d{4})\s*[-–]\s*(\d{1,2}[./]\d{1,2}[./]\d{4})",
+        text,
+    )
+    if range_match:
+        end_text = range_match.group(2).replace("/", ".")
+        try:
+            return datetime.strptime(end_text, "%d.%m.%Y").date()
+        except ValueError:
+            return None
+
+    return None
+
+
+def is_product_expired(product: dict, today: date | None = None) -> bool:
+    valid_to = parse_promotion_date(product.get("valid_to"))
+    if valid_to is None:
+        return False
+
+    if today is None:
+        today = date.today()
+
+    return valid_to < today
