@@ -27,8 +27,6 @@ jobs:
       TELEGRAM_MAX_POSTS_PER_RUN: "20"
       TELEGRAM_ITEMS_PER_GROUP: "4"
       ENABLE_LINELLA: "1"
-      ENABLE_METRO: "1"
-      METRO_HEADLESS: "0"
       DATABASE_PATH: "data/promotions.db"
 
     steps:
@@ -51,11 +49,6 @@ jobs:
         run: |
           python -m playwright install --with-deps chromium
 
-      - name: Install virtual display tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-
       - name: Ensure data folder and DB file
         run: |
           mkdir -p data
@@ -77,52 +70,16 @@ jobs:
 
           conn = sqlite3.connect("data/promotions.db")
           conn.execute(
-              "UPDATE products SET posted_to_telegram = 0 WHERE source_code IN ('kaufland', 'linella', 'metro')"
+              "UPDATE products SET posted_to_telegram = 0 WHERE source_code IN ('kaufland', 'linella')"
           )
           conn.commit()
           conn.close()
-          print("Reset posted_to_telegram for kaufland, linella, and metro")
+            print("Reset posted_to_telegram for kaufland and linella")
           PY
 
       - name: Run daily posting
         run: |
-          xvfb-run -a python run_daily_posting.py
-
-      - name: Debug source posting counts
-        if: always()
-        run: |
-          python - <<'PY'
-          import sqlite3
-
-          conn = sqlite3.connect("data/promotions.db")
-          cur = conn.cursor()
-
-          print("=== SOURCE COUNTS ===")
-          rows = cur.execute(
-              """
-              SELECT
-                source_code,
-                COUNT(*) AS total,
-                SUM(CASE WHEN posted_to_telegram = 1 THEN 1 ELSE 0 END) AS posted,
-                SUM(CASE WHEN posted_to_telegram = 0 THEN 1 ELSE 0 END) AS unposted
-              FROM products
-              GROUP BY source_code
-              ORDER BY source_code
-              """
-          ).fetchall()
-          for row in rows:
-              print(row)
-
-          metro_unposted = cur.execute(
-              "SELECT COUNT(*) FROM products WHERE source_code = 'metro' AND posted_to_telegram = 0"
-          ).fetchone()[0]
-          print(f"METRO_UNPOSTED={metro_unposted}")
-
-          if metro_unposted == 0:
-              print("WARN: Metro has no unposted rows after run.")
-
-          conn.close()
-          PY
+            python run_daily_posting.py
 
       - name: Commit state updates for dedup persistence
         run: |

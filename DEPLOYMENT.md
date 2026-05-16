@@ -9,7 +9,7 @@ Acest document explică cum să setezi GitHub Actions pentru a rula scraperul au
 cd d:\Scrapper\promo-scraper-bot
 git init
 git add .
-git commit -m "Initial commit: promo scraper with Metro, Kaufland, Linella"
+git commit -m "Initial commit: promo scraper with Kaufland and Linella"
 ```
 
 ### Creeaza repository pe GitHub
@@ -53,13 +53,13 @@ Variables sunt pentru setari neconfidențiale.
 
 ## 4. Workflow deja configurat
 
-Fisierul `.github/workflows/scraper.yml` are:
+Fisierul `.github/workflows/daily-posting.yml` are:
 
 - **Schedule**: Ruleaza zilnic la 08:00 UTC (editabil in `cron` field)
 - **Manual trigger**: Poti apasa "Run workflow" manual din GitHub UI
-- **Playwright**: Se instaleaza Chromium automat pentru Metro scraper
+- **Playwright**: Se instaleaza Chromium automat pentru pagini randate dinamic
 - **Artifacts**: DB-ul se salveaza ca artifact (7 zile)
-- **Timeout**: 60 minute (suficient pentru ~1689 produse Metro)
+- **Timeout**: 40 minute
 
 ## 5. Verifica workflow status
 
@@ -69,7 +69,7 @@ Fisierul `.github/workflows/scraper.yml` are:
 
 ## 6. Editare schedule (cron)
 
-In `.github/workflows/scraper.yml`, linia:
+In `.github/workflows/daily-posting.yml`, linia:
 ```yaml
 - cron: '0 8 * * *'
 ```
@@ -104,10 +104,10 @@ Poti adauga notificari via:
 - Daca e inactiv prea mult, schedula se pauzează automat
 - Solutie: Apasa manual "Run workflow" sa reactivezi
 
-### Error "DrissionPage not found" in runner
-- Deja sunt pip dependencies in `requirements.txt`
+### Error la instalare dependinte in runner
+- Verifica `requirements.txt`
 - Runner instaleaza playwright si chromium automat
-- Daca e error persistent, verifica ca `requirements.txt` e up-to-date
+- Daca eroarea persista, ruleaza workflow manual dupa un nou push
 
 ### Telegram token expusă accidental
 1. Regenereaza imediat token-ul la @BotFather
